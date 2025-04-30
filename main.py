@@ -28,7 +28,6 @@ def run_command(cmd, check=True):
 def get_disks():
     print_color("\nОпределение доступных дисков...", Colors.OKBLUE)
     disks = []
-
     try:
         output = run_command("lsblk -d -o NAME,SIZE,MODEL -n -l")
         for i, line in enumerate(output.split('\n'), 1):
@@ -41,7 +40,6 @@ def get_disks():
     except subprocess.CalledProcessError:
         print_color("Ошибка при получении списка дисков", Colors.FAIL)
         sys.exit(1)
-
     return disks
 
 def select_disk():
@@ -49,7 +47,6 @@ def select_disk():
     if not disks:
         print_color("Не найдено доступных дисков для установки", Colors.FAIL)
         sys.exit(1)
-
     while True:
         try:
             choice = int(input("\nВведите номер диска в списке: "))
@@ -71,7 +68,6 @@ def get_timezones():
     except subprocess.CalledProcessError:
         print_color("Ошибка при получении списка часовых поясов", Colors.FAIL)
         sys.exit(1)
-
     return timezones
 
 def select_timezone(timezones):
@@ -80,9 +76,7 @@ def select_timezone(timezones):
         print_color(" 1. Просмотреть полный список часовых поясов", Colors.OKBLUE)
         print_color(" 2. Ввести свой часовой пояс (например: Europe/Moscow)", Colors.OKBLUE)
         print_color(" 3. Использовать предложенные выше варианты", Colors.OKBLUE)
-
         choice = input("Ваш выбор (1/2/3): ").strip()
-
         if choice == "1":
             for i, tz in enumerate(timezones, 1):
                 print(f" {i}. {tz}")
@@ -107,32 +101,27 @@ def select_timezone(timezones):
 
 def get_user_info():
     print_color("\nВведите данные пользователя", Colors.HEADER)
-
     while True:
         username = input("Имя пользователя: ").strip()
         if username:
             break
         print_color("Имя пользователя не может быть пустым", Colors.WARNING)
-
     while True:
         password = input("Пароль: ").strip()
         if not password:
             print_color("Пароль не может быть пустым", Colors.WARNING)
             continue
-
         confirm = input("Подтвердите пароль: ").strip()
         if password == confirm:
             break
         print_color("Пароли не совпадают. Попробуйте снова.", Colors.WARNING)
-
     return username, password
 
 def select_filesystem():
-    filesystems = ["ext4", "btrfs", "xfs", "f2fs", "ext3"]
+    filesystems = ["ext4", "btrfs", "xfs", "ext3"]
     print_color("\nДоступные файловые системы:", Colors.OKBLUE)
     for i, fs in enumerate(filesystems, 1):
         print_color(f" {i}. {fs}", Colors.OKCYAN)
-
     while True:
         try:
             choice = int(input("Выберите файловую систему (номер): "))
@@ -144,15 +133,12 @@ def select_filesystem():
 
 def partition_disk(disk, fs_type):
     print_color(f"\nРазметка диска {disk}...", Colors.HEADER)
-
     run_command(f"parted -s {disk} mklabel gpt")
     ram_size = int(run_command("grep MemTotal /proc/meminfo | awk '{print $2}'")) // 1024
-
     run_command(f"parted -s {disk} mkpart primary fat32 1MiB 513MiB")
     run_command(f"parted -s {disk} set 1 esp on")
     run_command(f"parted -s {disk} mkpart primary linux-swap 513MiB {ram_size + 513}MiB")
     run_command(f"parted -s {disk} mkpart primary {ram_size + 513}MiB 100%")
-
     if 'nvme' in disk or 'mmcblk' in disk:
         efi_part = f"{disk}p1"
         swap_part = f"{disk}p2"
@@ -161,26 +147,20 @@ def partition_disk(disk, fs_type):
         efi_part = f"{disk}1"
         swap_part = f"{disk}2"
         root_part = f"{disk}3"
-
     run_command(f"mkfs.fat -F32 {efi_part}")
     run_command(f"mkswap {swap_part}")
-
     if fs_type == "btrfs":
         run_command(f"mkfs.btrfs -f {root_part}")
     elif fs_type == "xfs":
         run_command(f"mkfs.xfs -f {root_part}")
-    elif fs_type == "f2fs":
-        run_command(f"mkfs.f2fs -f {root_part}")
     elif fs_type == "ext3":
         run_command(f"mkfs.ext3 -F {root_part}")
     else:
         run_command(f"mkfs.ext4 -F {root_part}")
-
     run_command(f"mount {root_part} /mnt")
     run_command(f"mkdir -p /mnt/boot")
     run_command(f"mount {efi_part} /mnt/boot")
     run_command(f"swapon {swap_part}")
-
     print_color("Диск успешно размечен и смонтирован", Colors.OKGREEN)
 
 def install_base_system():
@@ -190,35 +170,27 @@ def install_base_system():
 
 def configure_system(username, password, timezone, fs_type):
     print_color("\nКонфигурация системы...", Colors.HEADER)
-
     run_command("genfstab -U /mnt >> /mnt/etc/fstab")
-
     run_command(f"arch-chroot /mnt ln -sf /usr/share/zoneinfo/{timezone} /etc/localtime")
     run_command("arch-chroot /mnt hwclock --systohc")
-
     with open("/mnt/etc/locale.gen", "a") as f:
         f.write("en_US.UTF-8 UTF-8\nru_RU.UTF-8 UTF-8\n")
     run_command("arch-chroot /mnt locale-gen")
     run_command('arch-chroot /mnt echo "LANG=en_US.UTF-8" > /etc/locale.conf')
-
     run_command('arch-chroot /mnt echo "archlinux" > /etc/hostname')
-
     with open("/mnt/etc/hosts", "w") as f:
         f.write("127.0.0.1\tlocalhost\n")
         f.write("::1\t\tlocalhost\n")
         f.write("127.0.1.1\tarchlinux.localdomain\tarchlinux\n")
-
     run_command(f"arch-chroot /mnt echo 'root:{password}' | chpasswd")
     run_command(f"arch-chroot /mnt useradd -m -G wheel -s /bin/bash {username}")
     run_command(f"arch-chroot /mnt echo '{username}:{password}' | chpasswd")
     run_command("arch-chroot /mnt sed -i 's/^# %wheel ALL=(ALL) ALL/%wheel ALL=(ALL) ALL/' /etc/sudoers")
     run_command("arch-chroot /mnt bootctl install")
-
     with open("/mnt/boot/loader/loader.conf", "w") as f:
         f.write("default arch\n")
         f.write("timeout 3\n")
         f.write("editor no\n")
-
     root_part = run_command("findmnt -n -o SOURCE /mnt")
     with open("/mnt/boot/loader/entries/arch.conf", "w") as f:
         f.write("title Arch Linux\n")
@@ -228,17 +200,12 @@ def configure_system(username, password, timezone, fs_type):
         else:
             f.write(f"initrd /initramfs-linux.img\n")
         f.write(f"options root=UUID={run_command(f'blkid -s UUID -o value {root_part}')} rw\n")
-
     run_command("arch-chroot /mnt systemctl enable systemd-networkd systemd-resolved")
-
     print_color("Система успешно сконфигурирована", Colors.OKGREEN)
 
 def install_additional_packages():
     print_color("\nУстановка дополнительных пакетов...", Colors.HEADER)
-    packages = [
-        "networkmanager", "sudo", "vim", "bash-completion", "git",
-        "openssh", "htop", "man-db", "man-pages", "texinfo"
-    ]
+    packages = ["networkmanager", "sudo", "vim", "bash-completion", "git", "openssh", "htop", "man-db", "man-pages", "texinfo"]
     run_command(f"arch-chroot /mnt pacman -S --noconfirm {' '.join(packages)}")
     run_command("arch-chroot /mnt systemctl enable NetworkManager")
     print_color("Дополнительные пакеты установлены", Colors.OKGREEN)
@@ -251,19 +218,16 @@ def main():
         print_color("Перед началом убедитесь, что вы запустили его из live-окружения ArchLinux.", Colors.WARNING)
         print_color("Для продолжения нажмите Enter...", Colors.OKGREEN)
         input()
-
         if not os.path.ismount('/mnt'):
             print_color("Проверка live-окружения...", Colors.OKBLUE)
         else:
             print_color("Ошибка: похоже, система уже смонтирована в /mnt", Colors.FAIL)
             sys.exit(1)
-
         disk = select_disk()
         timezones = get_timezones()
         timezone = select_timezone(timezones)
         username, password = get_user_info()
         fs_type = select_filesystem()
-
         clear_screen()
         print_color("=== Подтверждение установки ===", Colors.HEADER)
         print(f"Диск для установки: {disk}")
@@ -271,22 +235,17 @@ def main():
         print(f"Имя пользователя: {username}")
         print(f"Файловая система: {fs_type}")
         print_color("\nВСЕ ДАННЫЕ НА ВЫБРАННОМ ДИСКЕ БУДУТ УДАЛЕНЫ!", Colors.FAIL)
-
         confirm = input("\nПродолжить установку? (y/N): ").strip().lower()
         if confirm != 'y':
             print_color("Установка отменена", Colors.WARNING)
             sys.exit(0)
-
         start_time = datetime.now()
-
         partition_disk(disk, fs_type)
         install_base_system()
         configure_system(username, password, timezone, fs_type)
         install_additional_packages()
-
         end_time = datetime.now()
         total_time = (end_time - start_time).total_seconds() / 60
-
         clear_screen()
         print_color("=== Установка завершена успешно! ===", Colors.OKGREEN)
         print(f"\nОбщее время установки: {total_time:.1f} минут")
@@ -294,7 +253,6 @@ def main():
         print_color(" 1. umount -R /mnt", Colors.OKBLUE)
         print_color(" 2. reboot", Colors.OKBLUE)
         print_color("\nПосле перезагрузки войдите в систему под своим пользователем", Colors.OKGREEN)
-
     except subprocess.CalledProcessError as e:
         print_color(f"\nОшибка во время установки: {e}", Colors.FAIL)
         print_color("Проверьте сообщения выше для диагностики проблемы", Colors.WARNING)
