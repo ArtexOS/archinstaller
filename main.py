@@ -3,6 +3,7 @@ import subprocess
 import time
 import sys
 from datetime import datetime
+import re
 
 class Colors:
     HEADER = '\033[95m'
@@ -22,7 +23,11 @@ def print_color(text, color):
     print(color + text + Colors.ENDC)
 
 def run_command(cmd, check=True):
-    result = subprocess.run(cmd, shell=True, check=check, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    result = subprocess.run(cmd, shell=True, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if check and result.returncode != 0:
+        print_color(f"Ошибка выполнения команды: {cmd}", Colors.FAIL)
+        print_color(f"STDERR: {result.stderr.strip()}", Colors.FAIL)
+        raise subprocess.CalledProcessError(result.returncode, cmd)
     return result.stdout.strip()
 
 def get_disks():
@@ -103,9 +108,13 @@ def get_user_info():
     print_color("\nВведите данные пользователя", Colors.HEADER)
     while True:
         username = input("Имя пользователя: ").strip()
-        if username:
-            break
-        print_color("Имя пользователя не может быть пустым", Colors.WARNING)
+        if not username:
+            print_color("Имя пользователя не может быть пустым", Colors.WARNING)
+            continue
+        if not re.match(r'^[a-z][a-z0-9_-]*$', username):
+            print_color("Имя пользователя должно начинаться с буквы и содержать только буквы, цифры, подчеркивания или дефисы", Colors.WARNING)
+            continue
+        break
     while True:
         password = input("Пароль: ").strip()
         if not password:
@@ -182,9 +191,9 @@ def configure_system(username, password, timezone, fs_type):
         f.write("127.0.0.1\tlocalhost\n")
         f.write("::1\t\tlocalhost\n")
         f.write("127.0.1.1\tarchlinux.localdomain\tarchlinux\n")
-    run_command(f"arch-chroot /mnt echo 'root:{password}' | chpasswd")
+    run_command(f"arch-chroot /mnt sh -c \"echo 'root:{password}' | chpasswd\"")
     run_command(f"arch-chroot /mnt useradd -m -G wheel -s /bin/bash {username}")
-    run_command(f"arch-chroot /mnt echo '{username}:{password}' | chpasswd")
+    run_command(f"arch-chroot /mnt sh -c \"echo '{username}:{password}' | chpasswd\"")
     run_command("arch-chroot /mnt sed -i 's/^# %wheel ALL=(ALL) ALL/%wheel ALL=(ALL) ALL/' /etc/sudoers")
     run_command("arch-chroot /mnt bootctl install")
     with open("/mnt/boot/loader/loader.conf", "w") as f:
