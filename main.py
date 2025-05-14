@@ -1,9 +1,8 @@
 import os
 import subprocess
-import time
 import sys
-from datetime import datetime
 import re
+from datetime import datetime
 
 class Colors:
     HEADER = '\033[95m'
@@ -23,7 +22,7 @@ def print_color(text, color):
     print(color + text + Colors.ENDC)
 
 def run_command(cmd, check=True):
-    result = subprocess.run(cmd, shell=True, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if check and result.returncode != 0:
         print_color(f"Ошибка выполнения команды: {cmd}", Colors.FAIL)
         print_color(f"STDERR: {result.stderr.strip()}", Colors.FAIL)
@@ -56,7 +55,7 @@ def select_disk():
         try:
             choice = int(input("\nВведите номер диска в списке: "))
             if 1 <= choice <= len(disks):
-                return disks[choice-1][0]
+                return disks[choice - 1][0]
             print_color("Некорректный номер диска. Попробуйте снова.", Colors.WARNING)
         except ValueError:
             print_color("Пожалуйста, введите число.", Colors.WARNING)
@@ -97,7 +96,7 @@ def select_timezone(timezones):
                 try:
                     num = int(input(f"Введите номер часового пояса (1-{len(timezones)}): "))
                     if 1 <= num <= len(timezones):
-                        return timezones[num-1]
+                        return timezones[num - 1]
                     print_color("Некорректный номер. Попробуйте снова.", Colors.WARNING)
                 except ValueError:
                     print_color("Пожалуйста, введите число.", Colors.WARNING)
@@ -135,7 +134,7 @@ def select_filesystem():
         try:
             choice = int(input("Выберите файловую систему (номер): "))
             if 1 <= choice <= len(filesystems):
-                return filesystems[choice-1]
+                return filesystems[choice - 1]
             print_color("Некорректный номер. Попробуйте снова.", Colors.WARNING)
         except ValueError:
             print_color("Пожалуйста, введите число.", Colors.WARNING)
@@ -205,31 +204,30 @@ def configure_system(username, password, timezone, fs_type):
         f.write("title Arch Linux\n")
         f.write("linux /vmlinuz-linux\n")
         if fs_type == "btrfs":
-            f.write(f"initrd /initramfs-linux-btrfs.img\n")
+            f.write("initrd /initramfs-linux-btrfs.img\n")
         else:
-            f.write(f"initrd /initramfs-linux.img\n")
+            f.write("initrd /initramfs-linux.img\n")
         f.write(f"options root=UUID={run_command(f'blkid -s UUID -o value {root_part}')} rw\n")
     run_command("arch-chroot /mnt systemctl enable systemd-networkd systemd-resolved")
     print_color("Система успешно сконфигурирована", Colors.OKGREEN)
 
 def install_additional_packages():
     print_color("\nУстановка дополнительных пакетов...", Colors.HEADER)
-    packages = ["networkmanager", "sudo", "vim", "bash-completion", "git", "openssh", "htop", "man-db", "man-pages", "texinfo"]
+    packages = ["networkmanager", "sudo", "vim", "bash-completion", "git", "openssh", "htop", "man-db", "man-pages", "texinfo", "gdm", "gnome", "gnome-tweaks"]
     run_command(f"arch-chroot /mnt pacman -S --noconfirm {' '.join(packages)}")
     run_command("arch-chroot /mnt systemctl enable NetworkManager")
     print_color("Дополнительные пакеты установлены", Colors.OKGREEN)
 
 def main():
     try:
+        run_command("setfont cyr-sun16", check=False)
         clear_screen()
         print_color("=== ArchLinux Installer ===", Colors.HEADER)
         print_color("\nЭтот скрипт установит ArchLinux на ваш компьютер.", Colors.OKBLUE)
         print_color("Перед началом убедитесь, что вы запустили его из live-окружения ArchLinux.", Colors.WARNING)
         print_color("Для продолжения нажмите Enter...", Colors.OKGREEN)
         input()
-        if not os.path.ismount('/mnt'):
-            print_color("Проверка live-окружения...", Colors.OKBLUE)
-        else:
+        if os.path.ismount('/mnt'):
             print_color("Ошибка: похоже, система уже смонтирована в /mnt", Colors.FAIL)
             sys.exit(1)
         disk = select_disk()
@@ -253,15 +251,16 @@ def main():
         install_base_system()
         configure_system(username, password, timezone, fs_type)
         install_additional_packages()
+        run_command("umount -R /mnt")
         end_time = datetime.now()
         total_time = (end_time - start_time).total_seconds() / 60
         clear_screen()
         print_color("=== Установка завершена успешно! ===", Colors.OKGREEN)
         print(f"\nОбщее время установки: {total_time:.1f} минут")
-        print("\nДальнейшие действия:")
-        print_color(" 1. umount -R /mnt", Colors.OKBLUE)
-        print_color(" 2. reboot", Colors.OKBLUE)
-        print_color("\nПосле перезагрузки войдите в систему под своим пользователем", Colors.OKGREEN)
+        print_color("Необходима перезагрузка.", Colors.WARNING)
+        confirmation_for_reboot = input("Перезагрузить? (Y/n): ").strip().lower()
+        if confirmation_for_reboot == "y":
+            run_command("reboot now")
     except subprocess.CalledProcessError as e:
         print_color(f"\nОшибка во время установки: {e}", Colors.FAIL)
         print_color("Проверьте сообщения выше для диагностики проблемы", Colors.WARNING)
